@@ -140,12 +140,15 @@ class Plane(Objects):
         self.center=center
         self.normal=norm
         
-    def set_shade(self,color=ar([.1,.2,.3]),reflection=.85,diffuse=1.,specular_c=.6,specular_k=50):
+    def set_shade(self,color=ar([.1,.2,.3]),reflection=.85,diffuse=1.,specular_c=.6,specular_k=50,chess=True):
         self.color=color
         self.reflection=reflection
         self.diffuse=diffuse
         self.specular_c=specular_c
         self.specular_k=specular_k
+        self.color2=ar([.5,.4,.1])
+        self.chess=chess
+
         
     def intersect_time(self,direction,camera):
         delta_d=np.dot(direction,self.normal)
@@ -164,13 +167,19 @@ class Plane(Objects):
         h=(light-intersect_point)+(camera-intersect_point)
         h=normalize(h)
         
-        diffuse_light=self.diffuse*intensity*self.color*max(np.dot(l,norm),0)#intensity,color至少一个为np.array
+        color=self.color
+        if self.chess:
+            if (intersect_point[0]//2+intersect_point[2]//2)%2==0:
+                color=self.color2
+            
+        
+        diffuse_light=self.diffuse*intensity*color*max(np.dot(l,norm),0)#intensity,color至少一个为np.array
         specular_light=self.specular_c*intensity*math.pow(max(np.dot(h,norm),0), self.specular_k)
        
         return specular_light+diffuse_light#当trangular_mesh不止一个又要改
     
     def get_color_ambient(self):
-        ambient_light=ambient*self.color
+        ambient_light=ambient*color
         return ambient_light
     
 class Light:
@@ -208,7 +217,7 @@ class Camera:
         return normalize(point_at-self.position)
         
 class Scene:
-    def __init__(self,filename="results/ray_trace_12.png",width=900,height=900):
+    def __init__(self,filename="results/ray_trace_13.png",width=900,height=900):
         self.img=Image.new("RGB",(width,height),(0,0,0))
         self.filename=filename
         
