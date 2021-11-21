@@ -69,7 +69,7 @@ class Triangular_mesh(Objects):
                     z.append(i)
                 self.vn_vertices=z#等待换写法
                 
-    def set_shade(self,color=ar([1.,.5,.6]),reflection=.85,diffuse=1.,specular_c=.6,specular_k=50):
+    def set_shade(self,color=ar([.1,.9,.1]),reflection=.4,diffuse=1.,specular_c=.6,specular_k=50):
         self.color=color
         self.reflection=reflection
         self.diffuse=diffuse
@@ -105,22 +105,26 @@ class Triangular_mesh(Objects):
         h=(light-intersect_point)+(camera-intersect_point)
         h=normalize(h)
         
-        diffuse_light=self.diffuse*intensity*self.color*max(np.dot(l,norm))#intensity,color至少一个为np.array
+        diffuse_light=self.diffuse*intensity*self.color*max(np.dot(l,norm),0)#intensity,color至少一个为np.array
         specular_light=self.specular_c*intensity*math.pow(max(np.dot(h,norm),0), self.specular_k)
        
         return specular_light+diffuse_light#当trangular_mesh不止一个又要改
     
     def get_color_ambient(self):
-        ambient_light=ambient*self.color
+        ambient_light=ambient*ar([1.,1.,1.])
         return ambient_light
                
         
-    def intersect_time(self,direction,camera):
+    def intersect_time(self,direction,camera,tri_tested=None):#tri_tested给阴影检测用
         t_min=np.inf
         tri_norm_min=None
+        shadow_mode=False       
+        if np.any(tri_tested!=None):    shadow_mode=True
         
         for count,i in enumerate(self.indices):
             tri=ar([self.vertices[idx-1] for idx in i])
+            if shadow_mode and np.all(tri_tested==tri):
+                continue
             normal=self.vn_vertices[count]
             t=self.intersect_tri_time(tri,direction,camera) 
             
@@ -128,9 +132,11 @@ class Triangular_mesh(Objects):
                 t_min=t
                 tri_norm_min=normal
                 
-        if t_min<np.inf:
-            self.min_point=camera+t_min*direction
-            self.min_norm=tri_norm_min
+        if t_min<np.inf and t_min>0:
+            if not shadow_mode:
+                self.min_point=camera+t_min*direction
+                self.min_norm=tri_norm_min
+                self.min_tri=tri#!!!!
             return t_min
         return np.inf
 
@@ -140,24 +146,24 @@ class Plane(Objects):
         self.center=center
         self.normal=norm
         
-    def set_shade(self,color=ar([.1,.2,.3]),reflection=.85,diffuse=1.,specular_c=.6,specular_k=50,chess=True):
+    def set_shade(self,color=ar([.1,.2,.3]),color2=ar([.5,.4,.1]),reflection=.85,diffuse=1.,specular_c=.6,specular_k=50,chess=True):
         self.color=color
         self.reflection=reflection
         self.diffuse=diffuse
         self.specular_c=specular_c
         self.specular_k=specular_k
-        self.color2=ar([.5,.4,.1])
+        self.color2=color2
         self.chess=chess
-
         
-    def intersect_time(self,direction,camera):
+    def intersect_time(self,direction,camera,shadow=False):
         delta_d=np.dot(direction,self.normal)
         if abs(delta_d)<1e-6:
             return np.inf
         t=np.dot((self.center-camera),self.normal)/delta_d
         if t<np.inf and t>0:
-            self.min_point=camera+t*direction
-            self.min_norm=self.normal
+            if not shadow:
+                self.min_point=camera+t*direction
+                self.min_norm=self.normal
             return max(t,0)
         return np.inf
     
@@ -171,8 +177,6 @@ class Plane(Objects):
         if self.chess:
             if (intersect_point[0]//2+intersect_point[2]//2)%2==0:
                 color=self.color2
-            
-        
         diffuse_light=self.diffuse*intensity*color*max(np.dot(l,norm),0)#intensity,color至少一个为np.array
         specular_light=self.specular_c*intensity*math.pow(max(np.dot(h,norm),0), self.specular_k)
        
@@ -185,7 +189,7 @@ class Plane(Objects):
 class Light:
     light_num=0
     light_item=[]
-    def __init__(self,position=ar([2,5,5]),intensity=ar([1.,1.,1.]),mode=1):
+    def __init__(self,position=ar([2.,5.,5.]),intensity=ar([1.,1.,1.]),mode=1):
         Light.light_num+=1
         Light.light_item.append(self)
         self.position=position
@@ -217,7 +221,7 @@ class Camera:
         return normalize(point_at-self.position)
         
 class Scene:
-    def __init__(self,filename="results/ray_trace_13.png",width=900,height=900):
+    def __init__(self,filename="results/v0.0.1_2.png",width=625,height=475):
         self.img=Image.new("RGB",(width,height),(0,0,0))
         self.filename=filename
         
@@ -226,37 +230,43 @@ class Scene:
         
     def save(self):
         self.img.save(self.filename)
-        
-        
+             
 def get_color(start,direction,intensity,light):
     is_in_shadow=False
     t_min=np.inf
-    object_min=None
+    object_reached=None
     color=ar([0.,0.,0.])
     for i in Objects.objects_item:
         time=i.intersect_time(direction,start)
         if time<t_min:
             t_min=time
-            object_min=i
-    if t_min==np.inf or max(intensity)<0.2:
+            object_reached=i
+    if t_min==np.inf or max(intensity)<0.05:
         return color
-    color+=i.get_color_ambient()
+    color+=ambient*intensity*object_reached.color
     '''
     做阴影测试
     '''
-    time_limit=np.linalg.norm(light-object_min.min_point)
+    time_limit=np.linalg.norm(light-object_reached.min_point)
     point_to_light_direction=normalize(light-i.min_point)
     for i in Objects.objects_item:
-        if i!=object_min:
-            t=i.intersect_time(point_to_light_direction,object_min.min_point+point_to_light_direction*.00001)
+        if isinstance(object_reached, Triangular_mesh) and i==object_reached:
+            t=i.intersect_time(point_to_light_direction,object_reached.min_point+point_to_light_direction*.00001,i.min_tri)
             if t<time_limit:
                 is_in_shadow=True
                 break
-    if not is_in_shadow:
-        color+=i.get_color_blinn(object_min.min_point,light,start,object_min.min_norm,intensity)
-    
-    reflect_ray=direction-2*np.dot(direction,object_min.min_norm)*object_min.min_norm
-    color+=i.reflection*get_color(object_min.min_point+reflect_ray*.00001, reflect_ray, intensity, light)#87
+        elif isinstance(object_reached, Plane) and i==object_reached:
+            t=i.intersect_time(point_to_light_direction,object_reached.min_point+point_to_light_direction*.00001,True)
+            if t<time_limit:
+                is_in_shadow=True
+                break
+            
+    if is_in_shadow:
+        return color
+    color+=object_reached.get_color_blinn(object_reached.min_point,light,start,object_reached.min_norm,intensity)
+    reflect_ray=direction-2*np.dot(direction,object_reached.min_norm)*object_reached.min_norm
+    re_direction=normalize(reflect_ray)
+    color+=get_color(object_reached.min_point+re_direction*.00001, re_direction, object_reached.reflection*intensity, light)#87
     
     return np.clip(color,0,1)
             
@@ -264,18 +274,18 @@ def get_color(start,direction,intensity,light):
     
                 
 if __name__=="__main__":
-    height=625
-    width=475
-    a=Triangular_mesh("model/sph.obj") 
+    height=475
+    width=625
+    a=Triangular_mesh("model/box.obj") 
     a.set_shade()
 
     b=Plane() 
     b.set_shade()
     
-    l=Light()
+    l=Light(position=ar([-5.,5.,-10.]))
         
-    scene=Scene()
-    camera=Camera(height=height,width=width)
+    scene=Scene("results/v0.0.1_7.png")
+    camera=Camera(height=height,width=width,position=ar([2.,2.,5.]))
     camera.generate_canvas()
     
     for i in tqdm.tqdm(range(width)):
