@@ -252,10 +252,10 @@ def get_color(start,direction,intensity,light):
     '''
     做阴影测试 可能会改变类变量 挂个anchor变量锁定
     '''
-    time_limit=np.linalg.norm(light-object_reached.min_point)
+    time_limit=np.linalg.norm(light-anchor_point)
     point_to_light_direction=normalize(light-i.min_point)
     for i in Objects.objects_item:
-        if isinstance(object_reached, Triangular_mesh) and i==object_reached:
+        if isinstance(object_reached, Triangular_mesh):
             if i==object_reached:
                 t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,i.min_tri)
             else:
@@ -263,7 +263,7 @@ def get_color(start,direction,intensity,light):
             if t<time_limit:
                 is_in_shadow=True
                 break
-        elif isinstance(object_reached, Plane) and i==object_reached:
+        elif isinstance(object_reached, Plane):
             if i==object_reached:
                 t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
             else:
