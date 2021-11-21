@@ -12,7 +12,7 @@ from PIL import Image
 import tqdm
 
 
-ambient=0.05
+ambient=0.15
 
 def normalize(x):
     return x/np.linalg.norm(x)
@@ -141,7 +141,7 @@ class Triangular_mesh(Objects):
         return np.inf
 
 class Plane(Objects):  
-    def __init__(self,center=ar([0,-1,0]),norm=ar([0,1,0])):  
+    def __init__(self,center=ar([0,-1.,0]),norm=ar([0,1.,0])):  
         super().__init__()
         self.center=center
         self.normal=norm
@@ -243,30 +243,41 @@ def get_color(start,direction,intensity,light):
             object_reached=i
     if t_min==np.inf or max(intensity)<0.05:
         return color
-    color+=ambient*intensity*object_reached.color
+    
+    anchor_norm=object_reached.min_norm
+    anchor_point=object_reached.min_point
+    
+    ambient_intensity=ambient*intensity*object_reached.color
+    color+=(object_reached.get_color_blinn(anchor_point,light,start,anchor_norm,intensity)+ambient_intensity)
     '''
-    做阴影测试
+    做阴影测试 可能会改变类变量 挂个anchor变量锁定
     '''
     time_limit=np.linalg.norm(light-object_reached.min_point)
     point_to_light_direction=normalize(light-i.min_point)
     for i in Objects.objects_item:
         if isinstance(object_reached, Triangular_mesh) and i==object_reached:
-            t=i.intersect_time(point_to_light_direction,object_reached.min_point+point_to_light_direction*.00001,i.min_tri)
+            if i==object_reached:
+                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,i.min_tri)
+            else:
+                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
             if t<time_limit:
                 is_in_shadow=True
                 break
         elif isinstance(object_reached, Plane) and i==object_reached:
-            t=i.intersect_time(point_to_light_direction,object_reached.min_point+point_to_light_direction*.00001,True)
+            if i==object_reached:
+                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
+            else:
+                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001)
             if t<time_limit:
                 is_in_shadow=True
                 break
             
     if is_in_shadow:
-        return color
-    color+=object_reached.get_color_blinn(object_reached.min_point,light,start,object_reached.min_norm,intensity)
-    reflect_ray=direction-2*np.dot(direction,object_reached.min_norm)*object_reached.min_norm
+        return ambient_intensity
+    
+    reflect_ray=direction-2*np.dot(direction,anchor_norm)*anchor_norm
     re_direction=normalize(reflect_ray)
-    color+=get_color(object_reached.min_point+re_direction*.00001, re_direction, object_reached.reflection*intensity, light)#87
+    color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*intensity, light)#87
     
     return np.clip(color,0,1)
             
@@ -279,12 +290,12 @@ if __name__=="__main__":
     a=Triangular_mesh("model/box.obj") 
     a.set_shade()
 
-    b=Plane() 
+    b=Plane(center=ar([0,-1.5,0])) 
     b.set_shade()
     
-    l=Light(position=ar([-5.,5.,-10.]))
+    l=Light(position=ar([-2.,4.,-5.]))
         
-    scene=Scene("results/v0.0.1_7.png")
+    scene=Scene("results/v0.0.1_9.png")
     camera=Camera(height=height,width=width,position=ar([2.,2.,5.]))
     camera.generate_canvas()
     
