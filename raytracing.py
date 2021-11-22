@@ -12,7 +12,7 @@ from PIL import Image
 import tqdm
 
 
-ambient=0.15
+ambient=0.1
 
 def normalize(x):
     return x/np.linalg.norm(x)
@@ -110,8 +110,8 @@ class Triangular_mesh(Objects):
        
         return specular_light+diffuse_light#当trangular_mesh不止一个又要改
     
-    def get_color_ambient(self):
-        ambient_light=ambient*ar([1.,1.,1.])
+    def get_color_ambient(self,intersect_point,light,camera,norm,intensity):
+        ambient_light=ambient*intensity*self.color
         return ambient_light
                
         
@@ -182,8 +182,12 @@ class Plane(Objects):
        
         return specular_light+diffuse_light#当trangular_mesh不止一个又要改
     
-    def get_color_ambient(self):
-        ambient_light=ambient*color
+    def get_color_ambient(self,intersect_point,light,camera,norm,intensity):
+        color=self.color
+        if self.chess:
+            if (intersect_point[0]//2+intersect_point[2]//2)%2==0:
+                color=self.color2
+        ambient_light=ambient*color*intensity
         return ambient_light
     
 class Light:
@@ -247,13 +251,13 @@ def get_color(start,direction,intensity,light):
     anchor_norm=object_reached.min_norm
     anchor_point=object_reached.min_point
     
-    ambient_intensity=ambient*intensity*object_reached.color
+    ambient_intensity=object_reached.get_color_ambient(anchor_point,light,start,anchor_norm,intensity)
     color+=(object_reached.get_color_blinn(anchor_point,light,start,anchor_norm,intensity)+ambient_intensity)
     '''
     做阴影测试 可能会改变类变量 挂个anchor变量锁定
     '''
     time_limit=np.linalg.norm(light-anchor_point)
-    point_to_light_direction=normalize(light-i.min_point)
+    point_to_light_direction=normalize(light-anchor_point)
     for i in Objects.objects_item:
         if isinstance(object_reached, Triangular_mesh):
             if i==object_reached:
@@ -277,7 +281,7 @@ def get_color(start,direction,intensity,light):
     
     reflect_ray=direction-2*np.dot(direction,anchor_norm)*anchor_norm
     re_direction=normalize(reflect_ray)
-    color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*intensity, light)#87
+    #color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*intensity, light)#87
     
     return np.clip(color,0,1)
             
@@ -290,13 +294,14 @@ if __name__=="__main__":
     a=Triangular_mesh("model/box.obj") 
     a.set_shade()
 
-    b=Plane(center=ar([0,-1.5,0])) 
+    b=Plane(center=ar([0,-1,0])) 
     b.set_shade()
     
-    l=Light(position=ar([-2.,4.,-5.]))
+    l=Light(position=ar([2.,4.,5.]))
+    
         
-    scene=Scene("results/v0.0.1_9.png")
-    camera=Camera(height=height,width=width,position=ar([2.,2.,5.]))
+    scene=Scene("results/v0.0.1_14.png")
+    camera=Camera(height=height,width=width,position=ar([4.,2.,5.]))
     camera.generate_canvas()
     
     for i in tqdm.tqdm(range(width)):
