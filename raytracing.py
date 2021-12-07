@@ -235,7 +235,7 @@ class Scene:
     def save(self):
         self.img.save(self.filename)
              
-def get_color(start,direction,intensity,light):
+def get_color(start,direction,intensity):
     is_in_shadow=False
     t_min=np.inf
     object_reached=None
@@ -251,63 +251,68 @@ def get_color(start,direction,intensity,light):
     anchor_norm=object_reached.min_norm
     anchor_point=object_reached.min_point
     
-    ambient_intensity=object_reached.get_color_ambient(anchor_point,light,start,anchor_norm,intensity)
-    color+=(object_reached.get_color_blinn(anchor_point,light,start,anchor_norm,intensity)+ambient_intensity)
-    '''
-    做阴影测试 可能会改变类变量 挂个anchor变量锁定
-    '''
-    time_limit=np.linalg.norm(light-anchor_point)
-    point_to_light_direction=normalize(light-anchor_point)
-    for i in Objects.objects_item:
-        if isinstance(object_reached, Triangular_mesh):
-            if i==object_reached:
-                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,i.min_tri)
-            else:
-                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
-            if t<time_limit:
-                is_in_shadow=True
-                break
-        elif isinstance(object_reached, Plane):
-            if i==object_reached:
-                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
-            else:
-                t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001)
-            if t<time_limit:
-                is_in_shadow=True
-                break
-            
-    if is_in_shadow:
-        return ambient_intensity
-    
-    reflect_ray=direction-2*np.dot(direction,anchor_norm)*anchor_norm
-    re_direction=normalize(reflect_ray)
-    #color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*intensity, light)#87
-    
+    for single_light_source in Light.light_item:
+        ambient_intensity=object_reached.get_color_ambient(anchor_point,single_light_source.position,start,anchor_norm,single_light_source.intensity)
+        blinn_color=object_reached.get_color_blinn(anchor_point,single_light_source.position,start,anchor_norm,single_light_source.intensity)
+        
+        
+        time_limit=np.linalg.norm(single_light_source.position-anchor_point)
+        point_to_light_direction=normalize(single_light_source.position-anchor_point)
+        for i in Objects.objects_item:
+            if isinstance(object_reached, Triangular_mesh):
+                if i==object_reached:
+                    t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,i.min_tri)
+                else:
+                    t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
+                if t<time_limit:
+                    is_in_shadow=True
+                    break
+            elif isinstance(object_reached, Plane):
+                if i==object_reached:
+                    t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001,True)
+                else:
+                    t=i.intersect_time(point_to_light_direction,anchor_point+point_to_light_direction*.00001)
+                if t<time_limit:
+                    is_in_shadow=True
+                    break
+                
+        if is_in_shadow:
+            color+=ambient_intensity
+            continue
+        
+        reflect_ray=direction-2*np.dot(direction,anchor_norm)*anchor_norm
+        re_direction=normalize(reflect_ray)
+        color+=ambient_intensity+blinn_color
+        color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*intensity)#87
+        
     return np.clip(color,0,1)
             
   
     
                 
 if __name__=="__main__":
-    height=475
-    width=625
+    height=75
+    width=100
     a=Triangular_mesh("model/box.obj") 
     a.set_shade()
 
-    b=Plane(center=ar([0,-1,0])) 
+    b=Plane(center=ar([0,-2,0])) 
     b.set_shade()
     
-    l=Light(position=ar([2.,4.,5.]))
+    l1=Light(position=ar([0.,2.,2.]))
+    l2=Light(position=ar([0.,2.,-2.]))
+    l3=Light(position=ar([2.,2.,0.]))
+    l4=Light(position=ar([-2.,2.,0.]))
     
         
-    scene=Scene("results/v0.0.1_14.png")
-    camera=Camera(height=height,width=width,position=ar([4.,2.,5.]))
+    scene=Scene("results/v0.0.1_10.png",width=width,height=height)
+    camera=Camera(height=height,width=width,position=ar([2.,2.,5.]))
     camera.generate_canvas()
     
     for i in tqdm.tqdm(range(width)):
         for j in range(height):
             direction=camera.get_direction(i, j)
-            color=get_color(camera.position, direction, l.intensity, l.position)
+            color=get_color(camera.position, direction, ar([1.,1.,1.]))#最后一个参数是給递归提供退出参数的，待更好的写法
             scene.img.putpixel((i,j), (int(color[0]*255),int(color[1]*255),int(color[2]*255)))
             
     scene.save()
