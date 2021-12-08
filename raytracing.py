@@ -68,7 +68,13 @@ class Triangular_mesh(Objects):
                     z.append(i)
                     z.append(i)
                 self.vn_vertices=z#等待换写法
-                
+    def translation(self,move_vector):
+        '''
+        传入一个平移的向量(numpy.array)，将所有顶点做相应的平行
+        '''
+        for num in range(len(self.vertices)):
+            self.vertices[num]+=move_vector
+            
     def set_shade(self,color=ar([.1,.9,.1]),reflection=.4,diffuse=1.,specular_c=.6,specular_k=50):
         self.color=color
         self.reflection=reflection
@@ -228,6 +234,8 @@ class Scene:
     def __init__(self,filename="results/v0.0.1_2.png",width=625,height=475):
         self.img=Image.new("RGB",(width,height),(0,0,0))
         self.filename=filename
+        self.width=width
+        self.height=height
         
     def show(self):
         self.img.show()
@@ -283,40 +291,95 @@ def get_color(start,direction,intensity):
         reflect_ray=direction-2*np.dot(direction,anchor_norm)*anchor_norm
         re_direction=normalize(reflect_ray)
         color+=ambient_intensity+blinn_color
-        color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*intensity)#87
+        color+=get_color(anchor_point+re_direction*.00001, re_direction, object_reached.reflection*color)#87
         
     return np.clip(color,0,1)
-            
-  
+
+def shade(scene,camera):
+    for i in tqdm.tqdm(range(scene.width)):
+        for j in range(scene.height):
+            direction=camera.get_direction(i, j)
+            color=get_color(camera.position, direction, ar([1.,1.,1.]))#最后一个参数是給递归提供退出参数的，待更好的写法
+            scene.img.putpixel((i,j), (int(color[0]*255),int(color[1]*255),int(color[2]*255)))
+    scene.save()
+    scene.show()
     
-                
-if __name__=="__main__":
+def tiny_collide_engine(start_height=2,time=3,fps=10,alpha=-0.8,g=9.8,slow=1.5):
+    '''
+    一个简单的垂直下落的碰撞仿真
+    输出一系列物体的平移向量
+    alpha表示反弹时的速度衰减倍率
+    单位全部取国际制，引入slow表示放慢倍率，如slow=2表示放慢两倍
+    '''
+    unit_time=1/(fps*slow)
+    current_height=start_height 
+    out_list=[]
+    current_velocity=0.
+    is_rebouncing=False
+    for i in range(time*fps):       
+        current_velocity+=unit_time*g
+        current_height-=current_velocity*unit_time
+        if current_height<0:#触底
+            current_velocity*=alpha
+            current_height=0
+            is_rebouncing=True
+        if is_rebouncing and current_velocity>0:#最高点
+            is_rebouncing=False
+        out_list.append(ar([0.,current_height,0.]))
+    return out_list
+
+            
+    
+
+def shade_anime(fps=10,time=3):
+    height=475
+    width=625
+    a=Triangular_mesh("model/box.obj") 
+    a.set_shade()
+    a.translation(ar([0.5,0.,0.]))
+    
+    Light(position=ar([0.,2.,2.]))
+    Light(position=ar([0.,2.,-2.]))
+    
+    b=Plane(center=ar([0,-1,0])) 
+    b.set_shade()
+    
+    out_list=tiny_collide_engine(fps=fps,time=time)
+    for frame in range(fps*time):
+        a.translation(out_list[frame])
+    
+        path="ani2/{}.png".format(str(frame))
+        scene=Scene(path,width=width,height=height)
+        camera=Camera(height=height,width=width,position=ar([2.,2.,5.]))
+        camera.generate_canvas()
+        
+        shade(scene,camera)
+        a.translation(-1*out_list[frame])
+        
+def shade_picture():
     height=75
     width=100
     a=Triangular_mesh("model/box.obj") 
     a.set_shade()
-
-    b=Plane(center=ar([0,-2,0])) 
+    a.translation(ar([0.5,0.,0.]))
+    
+    Light(position=ar([0.,2.,2.]))
+    Light(position=ar([0.,2.,-2.]))
+    
+    b=Plane(center=ar([0,-1,0])) 
     b.set_shade()
     
-    l1=Light(position=ar([0.,2.,2.]))
-    l2=Light(position=ar([0.,2.,-2.]))
-    l3=Light(position=ar([2.,2.,0.]))
-    l4=Light(position=ar([-2.,2.,0.]))
-    
-        
-    scene=Scene("results/v0.0.1_10.png",width=width,height=height)
+    path="results/3.png"
+    scene=Scene(path,width=width,height=height)
     camera=Camera(height=height,width=width,position=ar([2.,2.,5.]))
     camera.generate_canvas()
     
-    for i in tqdm.tqdm(range(width)):
-        for j in range(height):
-            direction=camera.get_direction(i, j)
-            color=get_color(camera.position, direction, ar([1.,1.,1.]))#最后一个参数是給递归提供退出参数的，待更好的写法
-            scene.img.putpixel((i,j), (int(color[0]*255),int(color[1]*255),int(color[2]*255)))
-            
-    scene.save()
-    scene.show()
+    shade(scene,camera)
+    
+    
+                
+if __name__=="__main__":
+    shade_picture()
     
             
 
